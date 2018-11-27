@@ -1,3 +1,4 @@
+#pragma once
 #ifndef _STACK_QMJ_
 #define _STACK_QMJ_
 
