@@ -180,6 +180,82 @@ namespace qmj {
     private:
         link_type node;
     };
+
+    template<typename value_type, typename alloc>
+    void slist<value_type, alloc>::clear() {
+        for (link_type cur = node->next; cur != node;) {
+            link_type tmp = cur->next;
+            destroy_and_free_node(cur);
+            cur = tmp;
+        }
+        node->next = node;
+        node->prev = node;
+    }
+
+    template<typename value_type, typename alloc>
+    void slist<value_type, alloc>::remove(const value_type &val) {
+        auto first = begin();
+        auto last = end();
+        while (first != last) {
+            if (*first == val)
+                first = erase(first);
+            else
+                ++first;
+        }
+    }
+
+    template<typename value_type, typename alloc>
+    void slist<value_type, alloc>::reverse() {
+        link_type cur = node;
+        do {
+            auto next = cur->next;
+            cur->next = cur->prev;
+            cur->prev = next;
+            cur = next;
+        } while (cur != node);
+    }
+
+    template<typename value_type, typename alloc>
+    inline void swap(_QMJ slist<value_type, alloc> &left,
+                     _QMJ slist<value_type, alloc> &right) noexcept {
+        left.swap(right);
+    }
+
+    template<typename value_type, typename alloc>
+    inline bool operator==(const _QMJ slist<value_type, alloc> &left,
+                           const _QMJ slist<value_type, alloc> &right) {
+        return (std::equal(left.begin(), left.end(), right.begin(), right.end()));
+    }
+
+    template<typename value_type, typename alloc>
+    inline bool operator!=(const _QMJ slist<value_type, alloc> &left,
+                           const _QMJ slist<value_type, alloc> &right) {
+        return !(left == right);
+    }
+
+    template<typename value_type, typename alloc>
+    inline bool operator<(const _QMJ slist<value_type, alloc> &left,
+                          const _QMJ slist<value_type, alloc> &right) {
+        return std::lexicographical_compare(left.begin(), left.end(), right.begin(), right.end());
+    }
+
+    template<typename value_type, typename alloc>
+    inline bool operator<=(const _QMJ slist<value_type, alloc> &left,
+                           const _QMJ slist<value_type, alloc> &right) {
+        return !(right < left);
+    }
+
+    template<typename value_type, typename alloc>
+    inline bool operator>(const _QMJ slist<value_type, alloc> &left,
+                          const _QMJ slist<value_type, alloc> &right) {
+        return right < left;
+    }
+
+    template<typename value_type, typename alloc>
+    inline bool operator>=(const _QMJ slist<value_type, alloc> &left,
+                           const _QMJ slist<value_type, alloc> &right) {
+        return !(left < right);
+    }
 }
 
 #endif
