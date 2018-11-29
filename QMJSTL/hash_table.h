@@ -334,28 +334,311 @@ namespace qmj {
             return (iterator(buckets[i], this));
         }
 
+        local_iterator begin(size_type index) {
+            return (local_iterator(buckets[index]));
+        }
 
-    private:
-        void init_buckets(const size_type n) {
-            const size_type n_buckets = next_prime(n);
-            buckets.resize(n_buckets, nullptr);
+        iterator end() { return (iterator(nullptr, this)); }
+
+        local_iterator end(size_type index) { return (iterator(nullptr)); }
+
+        const_iterator begin() const { return (cbegin()); }
+
+        const_local_iterator begin(size_type index) const { return (cbegin(index)); }
+
+        const_iterator end() const { return (cend()); }
+
+        const_local_iterator end(size_type index) const { return (cend(index)); }
+
+        const_iterator cbegin() const {
+            if (empty())
+                return (cend());
+            size_t i = 0;
+            for (const size_t len = buckets.size(); i != len && (!buckets[i]);)
+                ++i;
+            return (const_iterator(buckets[i], this));
+        }
+
+        const_local_iterator cbegin(size_type index) const {
+            return (const_local_iterator(buckets[index]));
+        }
+
+        const_iterator cend() const { return (const_iterator(nullptr, this)); }
+
+        const_local_iterator cend(size_type index) const {
+            return (const_local_iterator(nullptr));
+        }
+
+        size_type size() const { return (num_elements); }
+
+        bool empty() const { return (!size()); }
+
+        float load_factor() const noexcept {
+            return ((float) size() / (float) bucket_count());
+        }
+
+        size_type erase(const key_type &k) {
+            size_t n = get_bucket_num(k);
+            link_type cur = buckets[n];
+            size_type count = 0;
+            for (link_type tmp = cur; cur && equals(get_key(cur->value), k); tmp = cur) {
+                --num_elements;
+                cur = cur->next;
+                ++count;
+                destroy_and_free_node(tmp);
+            }
+            buckets[n] = cur;
+            if (cur) {
+                for (link_type next = cur->next; next; next = cur->next) {
+                    if (equals(get_key(next->value), k)) {
+                        ++count;
+                        --num_elements;
+                        cur->next = next->next;
+                        destroy_and_free_node(next);
+                    } else {
+                        cur = next;
+                    }
+                }
+            }
+            return (count);
+        }
+
+        void erase(const_iterator x) {
+            size_t n = get_bucket_num(get_key(*x));
+            link_type cur = buckets[n];
+            link_type tar = x.cur;
+            if (cur == tar)
+                buckets[n] = x.cur->next;
+            else {
+                for (; cur->next != tar;)
+                    cur = cur->next;
+                cur->next = tar->next;
+            }
+            --num_elements;
+            destroy_and_free_node(tar);
+        }
+
+        void erase(const_iterator first, const_iterator last) {
+            for (; first != last;)
+                erase(first++);
         }
 
         void clear() {
             const size_t len = buckets.size();
-            for (size_t i = 0; i != len; ++i)
+            for (size_t i = 0; i != len; ++i) {
                 for (link_type cur = buckets[i], next; cur; cur = next) {
                     next = cur->next;
                     destroy_and_free_node(cur);
                 }
-
+            }
             memset(&buckets[0], 0, len);
             num_elements = 0;
+        }
+
+        size_type bucket(const key_type &k) const { return (get_bucket_num(k)); }
+
+        size_type count(const key_type &k) const {
+            size_type counter = 0;
+            size_t n = get_bucket_num(k);
+            for (link_type cur = buckets[n]; cur; cur = cur->next)
+                if (equals(get_key(cur->value), k))
+                    ++counter;
+
+            return (counter);
+        }
+
+        const_iterator find(const key_type &k) const {
+            return (const_iterator(find_imple(k), this));
+        }
+
+        iterator find(const key_type &k) { return (iterator(find_imple(k), this)); }
+
+        size_type bucket_count() const { return (buckets.size()); }
+
+        size_type bucket_size(const size_type n) const {
+            return (elements_in_bucket(n));
+        }
+
+        size_type max_size() const { return (prime_list[num_primes - 1]); }
+
+        template<bool multi = is_multi>
+        enable_if_t<!multi, PairIB> emplace(value_type &&val) {
+            return (emplace_imple(std::forward<value_type>(val)));
+        }
+
+        template<bool multi = is_multi, typename... types>
+        enable_if_t<!multi, PairIB> emplace(types &&... args) {
+            return (emplace_imple(std::forward<types>(args)...));
+        }
+
+        template<bool multi = is_multi>
+        enable_if_t<multi, iterator> emplace(value_type &&val) {
+            return (emplace_imple(std::forward<value_type>(val)));
+        }
+
+        template<bool multi = is_multi, typename... types>
+        enable_if_t<multi, iterator> emplace(types &&... args) {
+            return (emplace_imple(std::forward<types>(args)...));
+        }
+
+        template<bool multi = is_multi>
+        enable_if_t<!multi, PairIB> emplace_hint(const_iterator, value_type &&val) {
+            return (emplace_imple(std::forward<value_type>(val)));
+        }
+
+        template<bool multi = is_multi, typename... types>
+        enable_if_t<!multi, PairIB> emplace_hint(const_iterator, types &&... args) {
+            return (emplace_imple(std::forward<types>(args)...));
+        }
+
+        template<bool multi = is_multi>
+        enable_if_t<multi, iterator> emplace_hint(const_iterator, value_type &&val) {
+            return (emplace_imple(std::forward<value_type>(val)));
+        }
+
+        template<bool multi = is_multi, typename... types>
+        enable_if_t<multi, iterator> emplace_hint(const_iterator, types &&... args) {
+            return (emplace_imple(std::forward<types>(args)...));
+        }
+
+        template<bool multi = is_multi, enable_if_t<!multi, int> = 0>
+        PairIB insert(const value_type &val) {
+            return (emplace(val));
+        }
+
+        template<bool multi = is_multi, enable_if_t<!multi, int> = 0>
+        PairIB insert(value_type &&val) {
+            return (emplace(std::forward<value_type>(val)));
+        }
+
+        template<bool multi = is_multi, enable_if_t<multi, int> = 0>
+        iterator insert(const value_type &val) {
+            return (emplace(val));
+        }
+
+        template<bool multi = is_multi, enable_if_t<multi, int> = 0>
+        iterator insert(value_type &&val) {
+            return (emplace(std::forward<value_type>(val)));
+        }
+
+        template<bool multi = is_multi, enable_if_t<multi, int> = 0>
+        iterator insert(const_iterator, value_type &&val) {
+            return (emplace(std::forward<value_type>(val)));
+        }
+
+        template<bool multi = is_multi, enable_if_t<!multi, int> = 0>
+        iterator insert(const_iterator, value_type &&val) {
+            return (emplace(std::forward<value_type>(val)).first);
+        }
+
+        template<bool multi = is_multi, enable_if_t<multi, int> = 0>
+        iterator insert(const_iterator, const value_type &val) {
+            return (emplace(val));
+        }
+
+        template<bool multi = is_multi, enable_if_t<!multi, int> = 0>
+        iterator insert(const_iterator, const value_type &val) {
+            return (emplace(val).first);
+        }
+
+        template<typename IIter>
+        void insert(IIter first, IIter last) {
+            for (; first != last; ++first)
+                insert(*first);
+        }
+
+        void insert(const std::initializer_list<value_type> &lst) {
+            insert(lst.begin(), lst.end());
+        }
+
+        void rehash(const size_type new_n) { resize(new_n); }
+
+        void reserve(const size_type new_n) { resize(new_n); }
+
+        PairII equal_range(const key_type &key) {
+            PairLL ret = equal_range_imple(key);
+            return (PairII(local_iterator(ret.first), local_iterator(ret.second)));
+        }
+
+        PairCC equal_range(const key_type &key) const {
+            PairLL ret = equal_range_imple(key);
+            return (PairCC(const_local_iterator(ret.first), const_local_iterator(ret.second)));
+        }
+
+        allocator_type get_allocator() const { return (allocator_type()); }
+
+        hasher hash_fuction() const { return (hash); }
+
+        equalkey key_eq() const { return (equals); }
+
+    private:
+        void splice_afer(link_type first1, link_type first2) const {
+            link_type tar = first2->next;
+            first2->next = tar->next;
+            tar->next = first1->next;
+            first1->next = tar;
+        }
+
+        PairLL equal_range_imple(const key_type &key) const {
+            link_type first = find_imple(key);
+            if (!first)
+                return (PairLL(nullptr, nullptr));
+            link_type cur = first;
+            link_type next = cur->next;
+            for (; next && equals(key, get_key(next->value)); next = cur->next)
+                cur = next;
+            if (next) {
+                link_type before = next;
+                for (next = before->next; next; next = before->next) {
+                    if (equals(key, get_key(next->value))) {
+                        splice_afer(cur, before);
+                        cur = cur->next;
+                    } else {
+                        before = next;
+                    }
+                }
+            }
+            return (PairLL(first, cur->next));
+        }
+
+        template<typename...types>
+        link_type create_node(types &&...args) {
+            link_type node = alloc::allocate();
+            alloc::construct(node, std::forward<types>(args)...);
+            return (node);
         }
 
         void destroy_and_free_node(link_type node) {
             alloc::destroy(node);
             alloc::deallocate(node);
+        }
+
+        void init_buckets(const size_type n) {
+            const size_type n_buckets = next_prime(n);
+            buckets.resize(n_buckets, nullptr);
+        }
+
+        size_t get_bucket_num(const key_type &key, const size_t n) const {
+            return hash(key) % n;
+        }
+
+        size_type get_bucket_num(const key_type &key) const {
+            return get_bucket_num(key, buckets.size());
+        }
+
+        size_type elements_in_bucket(const size_type n) const {
+            size_type counter = 0;
+            for (link_type cur = buckets[n]; cur; cur = cur->next)
+                ++counter;
+            return (counter);
+        }
+
+        link_type find_imple(const key_type &k) const {
+            size_t n = get_bucket_num(k);
+            link_type cur = buckets[n];
+            for (; cur && (!equals(k, get_key(cur->value)));)
+                cur = cur->next;
+            return (cur);
         }
 
     private:
