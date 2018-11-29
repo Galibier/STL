@@ -410,6 +410,240 @@ namespace qmj {
             splice_after(pos, (self &) x, first, last);
         }
 
+        void reverse() noexcept {
+            if (!empty()) {
+                link_type before = b_head->next;
+                link_type cur = before->next;
+                before->next = nullptr;
+                link_type next;
+                for (; cur;) {
+                    next = cur->next;
+                    cur->next = before;
+                    before = cur;
+                    cur = next;
+                }
+                b_head->next = before;
+            }
+        }
+
+        void unique() {
+            unique(std::equal_to<value_type>());
+        }
+
+        template<typename Pred>
+        void unique(const Pred &pred) {
+            link_type before = b_head->next;
+            if (before) {
+                for (link_type cur = before->next; cur;) {
+                    if (pred(cur->data, before->data)) {
+                        before->next = cur->next;
+                        destroy_and_free_node(cur);
+                    } else
+                        before = cur;
+                    cur = before->next;
+                }
+            }
+        }
+
+        void merge(self &&x) {
+            merge_imple(x, std::less<value_type>());
+        }
+
+        void merge(self &x) {
+            merge_imple(x, std::less<value_type>());
+        }
+
+        template<typename Pred>
+        void merge(self &&x, const Pred &pred) {
+            merge_imple(x, pred);
+        }
+
+        template<typename Pred>
+        void merge(self &x, const Pred &pred) {
+            merge_imple(x, pred);
+        }
+
+        void sort() {
+            sort(std::less<value_type>());
+        }
+
+        template<typename Pred>
+        void sort(const Pred &pred) {
+            sort_merge(before_begin(), end(), _QMJ distance(begin(), end()), pred);
+        }
+
+    private:
+        template<typename...types>
+        link_type insert_after_imple(link_type cur_node, types &&...args) {
+            link_type new_node = create_node(cur_node->next, std::forward<types>(args)...);
+            cur_node->next = new_node;
+            return (new_node);
+        }
+
+        iterator insert_after_n(const_iterator pos, size_type n, const value_type &val) {
+            link_type tmp = pos.get_node();
+            link_type cur = tmp->next;
+            for (; n != 0; --n)
+                cur = create_node(cur, val);
+            if (cur != pos.get_node())
+                pos.get_node()->next = cur;
+            return iterator(tmp);
+        }
+
+        iterator insert_after_n_default(const_iterator pos, size_type n) {
+            link_type tmp = pos.get_node();
+            link_type cur = tmp->next;
+            for (; n != 0; --n)
+                cur = create_node(cur);
+            if (cur != pos.get_node())
+                pos.get_node()->next = cur;
+            return iterator(tmp);
+        }
+
+        template<typename InputIter>
+        iterator insert_after_range(const_iterator pos, InputIter first, InputIter last, std::input_iterator_tag) {
+            link_type ret = pos.get_node();
+            for (; first != last; ++first)
+                ret = insert_after_imple(ret, *first);
+            return iterator(ret);
+        }
+
+        template<typename FwdIter>
+        iterator insert_after_range(const_iterator pos, FwdIter first, FwdIter last, std::forward_iterator_tag) {
+            link_type ret = pos.get_node();
+            for (; first != last; ++first)
+                ret = insert_after_imple(ret, *first);
+            return iterator(ret);
+        }
+
+        template<typename BidIter>
+        iterator insert_after_range(const_iterator pos, BidIter first, BidIter last, std::bidirectional_iterator_tag) {
+            link_type tmp = pos.get_node();
+            link_type cur = tmp->next;
+            if (first != last)
+                tmp = cur = create_node(cur, *--last);
+            for (; first != last;)
+                cur = create_node(cur, *--last);
+            if (cur != pos.get_node())
+                pos.get_node()->next = cur;
+            return iterator(tmp);
+        }
+
+        template<typename Pred>
+        void merge_imple(self &right, const Pred &pred) {
+            iterator first1 = before_begin();
+            iterator after1 = begin();
+            iterator last1 = end();
+            iterator first2 = right.before_begin();
+            iterator after2 = right.begin();
+            iterator last2 = right.end();
+            if (after1 == last1)
+                splice_after(first1, right);
+            else if (after2 == last2)
+                return;
+            else
+                for (;;) {
+                    if (pred(*after2, *after1)) {
+                        iterator tmp = after2;
+                        transfer_after(first1, first2, ++tmp);
+                        ++first1;
+                        if ((after2 = tmp) == last2)
+                            return;
+                    } else {
+                        ++first1;
+                        if (++after1 == last1) {
+                            transfer_after(first1, first2, last2);
+                            return;
+                        }
+                    }
+                }
+        }
+
+        void transfer_after(const_iterator pos, const_iterator b_first, const_iterator last) {
+            link_type bg = b_first.get_node();
+            link_type tail = bg;
+            link_type ed = last.get_node();
+            for (link_type cur = tail->next; cur != ed; cur = tail->next)
+                tail = cur;
+            link_type pos_node = pos.get_node();
+            tail->next = pos_node->next;
+            pos_node->next = bg->next;
+            bg->next = ed;
+        }
+
+        size_type size() const {
+            size_type count = 0;
+            for (link_type cur = b_head->next; cur; cur = cur->next)
+                ++count;
+            return count;
+        }
+
+        iterator before_end() const {
+            link_type ret = b_head;
+            for (link_type cur = ret->next; cur; cur = cur->next)
+                ret = cur;
+            return iterator(ret);
+        }
+
+        iterator next(const_iterator iter, size_type n = 1) {
+            _QMJ advance(iter, n);
+            return (make_iter(iter));
+        }
+
+        template<typename Pred>
+        void sort_merge(const_iterator before, const_iterator end, size_type len, const Pred &pred) {
+            if (len < 2)
+                return;
+            size_type half = len >> 1;
+            const_iterator before_mid = next(before, half);
+            sort_merge(before_mid, end, len - half, pred);
+            sort_merge(before, ++before_mid, half, pred);
+            const_iterator first1 = next(before);
+            before_mid = next(before, half);
+            const_iterator first2 = next(before_mid);
+
+            for (;;) {
+                if (pred(*first1, *first2)) {
+                    ++first2;
+                    transfer_after(before, before_mid, next(before_mid, 2));
+                    ++before;
+                    if (first2 == end)
+                        return;
+                } else {
+                    ++before;
+                    if (++first1 == first2)
+                        return;
+                }
+            }
+        }
+
+    private:
+        template<typename... types>
+        link_type create_node(link_type cur, types &&... args) {
+            link_type ptr = alloc::allocate();
+            alloc::construct(ptr, std::forward<types>(args)..., cur);
+            return (ptr);
+        }
+
+        link_type create_base_node() {
+            link_type ptr = (link_type) alloc_type::allocate();
+            alloc_type::construct((base_link_type) ptr, nullptr);
+            return (ptr);
+        }
+
+        void free_base_node(link_type node) {
+            alloc_type::deallocate((base_link_type) node);
+        }
+
+        void destroy_and_free_node(link_type node) {
+            alloc::destroy(&(node->data));
+            alloc::deallocate(node);
+        }
+
+        iterator make_iter(const_iterator tar) const {
+            return (iterator(tar.node));
+        }
+
     private:
         link_type b_head;
     };
