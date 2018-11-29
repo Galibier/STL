@@ -158,12 +158,10 @@ namespace qmj {
         typedef slist<value_type_, Alloc> self;
         typedef Alloc allocator_type;
         typedef list_node<value_type_> *link_type;
-        typedef typename allocator_type::template rebind<list_node<value_type_>>::other
-                alloc;
+        typedef typename allocator_type::template rebind<list_node<value_type_>>::other alloc;
         typedef list_base_node<value_type_> base_node_type;
         typedef base_node_type *base_link_type;
-        typedef typename allocator_type::template rebind<base_node_type>::other
-                alloc_type;
+        typedef typename allocator_type::template rebind<base_node_type>::other alloc_type;
 
         typedef value_type_ value_type;
         typedef value_type *pointer;
