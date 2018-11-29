@@ -641,12 +641,180 @@ namespace qmj {
             return (cur);
         }
 
+        const key_type &get_key(const value_type &val) const {
+            return (traits::ExtractKey(val));
+        }
+
+        iterator make_iter(const_iterator &citer) const {
+            return (iterator(citer.cur, citer.ht));
+        }
+
+        template<typename... types>
+        PairIB insert_unique_noresize(types &&... args) {
+            link_type node = create_node(std::forward<types>(args)...);
+            const value_type &val = node->value;
+            size_type n = get_bucket_num(get_key(val));
+            link_type first = buckets[n];
+
+            for (link_type cur = first; cur; cur = cur->next) {
+                if (equals(get_key(cur->value), get_key(val))) {
+                    destroy_and_free_node(node);
+                    return (PairIB(iterator(cur, this), false));
+                }
+            }
+            node->next = first;
+            buckets[n] = node;
+            ++num_elements;
+            return (PairIB(iterator(node, this), true));
+        }
+
+        template<typename value_type>
+        PairIB insert_unique_noresize(value_type &&val) {
+            size_type n = get_bucket_num(get_key(val));
+            link_type first = buckets[n];
+            for (link_type cur = first; cur; cur = cur->next)
+                if (equals(get_key(cur->value), get_key(val)))
+                    return (PairIB(iterator(cur, this), false));
+            link_type node = create_node(std::forward<value_type>(val), first);
+            buckets[n] = node;
+            ++num_elements;
+            return (PairIB(iterator(node, this), true));
+        }
+
+        template<typename...types>
+        iterator insert_equal_noresize(types &&...args) {
+            link_type node = create_node(std::forward<types>(args)...);
+            const value_type &val = node->value;
+            const size_type n = get_bucket_num(get_key(val));
+            node->next = buckets[n];
+            buckets[n] = node;
+            ++num_elements;
+            return iterator(node, this);
+        }
+
+        template<typename value_type>
+        iterator insert_equal_noresize(value_type &&val) {
+            const size_type n = get_bucket_num(get_key(val));
+            link_type tmp = create_node(std::forward<value_type>(val), buckets[n]);
+            buckets[n] = tmp;
+            ++num_elements;
+            return iterator(tmp, this);
+        }
+
+        template<bool multi = is_multi, typename... types>
+        enable_if_t<!multi, PairIB> emplace_imple(types &&... args) {
+            resize(num_elements + 1);
+            return (insert_unique_noresize(std::forward<types>(args)...));
+        }
+
+        template<bool multi = is_multi>
+        enable_if_t<!multi, PairIB> emplace_imple(value_type &&val) {
+            resize(num_elements + 1);
+            return (insert_unique_noresize(std::forward<value_type>(val)));
+        }
+
+        template<bool multi = is_multi, typename... types>
+        enable_if_t<multi, iterator> emplace_imple(types &&... args) {
+            resize(num_elements + 1);
+            return (insert_equal_noresize(std::forward<types>(args)...));
+        }
+
+        template<bool multi = is_multi>
+        enable_if_t<multi, iterator> emplace_imple(value_type &&val) {
+            resize(num_elements + 1);
+            return (insert_equal_noresize(std::forward<value_type>(val)));
+        }
+
+        void resize(const size_type new_n) {
+            const size_type old_n = buckets.size();
+            if (new_n > old_n) {
+                const size_type n = next_prime(new_n);
+                if (n > old_n) {
+                    container tmp(n, nullptr);
+                    size_type new_bucket_num;
+                    for (size_type i = 0; i != old_n; ++i) {
+                        for (link_type first = buckets[i]; first; first = buckets[i]) {
+                            new_bucket_num = get_bucket_num(get_key(first->value), n);
+                            buckets[i] = first->next;
+                            first->next = tmp[new_bucket_num];
+                            tmp[new_bucket_num] = first;
+                        }
+                    }
+                    buckets.swap(tmp);
+                }
+            }
+        }
+
     private:
         hasher hash;
         key_equal equals;
         container buckets;
         size_type num_elements;
     };
+
+    template<typename traits>
+    inline void swap(hashtable<traits> &left, hashtable<traits> &right) noexcept {
+        left.swap(right);
+    }
+
+    template<typename traits>
+    inline bool _hash_element_equal(const hashtable<traits> &left,
+                                    const hashtable<traits> &right, true_type) {
+        typedef typename hashtable<traits>::const_iterator Iter;
+        typedef typename hashtable<traits>::const_local_iterator LIter;
+        typedef std::pair<LIter, LIter> PairLII;
+        PairLII Lrange;
+        PairLII Rrange;
+        for (Iter first = left.cbegin(), last = right.cend(); first != last; ++first) {
+            Lrange = left.equal_range(traits::ExtractKey(*first));
+            Rrange = right.equal_range(traits::ExtractKey(*first));
+            if (!_QMJ is_permutation(Lrange.first, Lrange.second, Rrange.first, Rrange.second))
+                return (false);
+        }
+        return (true);
+    }
+
+    template<typename traits>
+    inline bool _hash_element_equal_not_multi(const hashtable<traits> &left,
+                                              const hashtable<traits> &right, false_type) {
+        typedef typename hashtable<traits>::const_iterator Iter;
+        Iter ret;
+        Iter last2 = right.cend();
+        for (Iter cur = left.cbegin(), last1 = left.cend(); cur != last1; ++cur) {
+            ret = right.find(traits::ExtractKey(*cur));
+            if (ret == last2 || (!(traits::ExtractData(*ret) == traits::ExtractData(*cur))))
+                return (false);
+        }
+        return (true);
+    }
+
+    template<typename traits>
+    inline bool _hash_element_equal_not_multi(const hashtable<traits> &left,
+                                              const hashtable<traits> &right, true_type) {
+        typedef typename hashtable<traits>::const_iterator Iter;
+        Iter last2 = right.cend();
+        for (Iter cur = left.cbegin(), last1 = left.cend(); cur != last1; ++cur)
+            if (right.find(traits::ExtractKey(*cur)) == last2)
+                return (false);
+        return (true);
+    }
+
+    template<typename traits>
+    inline bool _hash_element_equal(const hashtable<traits> &left, const hashtable<traits> &right, false_type) {
+        return (_QMJ _hash_element_equal_not_multi(
+                left, right, _QMJ is_same<typename traits::key_type, typename traits::value_type>()));
+    }
+
+    template<typename traits>
+    inline bool operator==(const hashtable<traits> &left, const hashtable<traits> &right) {
+        return (left.size() == right.size() &&
+                _QMJ _hash_element_equal(left, right, _QMJ integral_constant<bool, traits::is_multi>()));
+    }
+
+    template<typename traits>
+    inline bool operator!=(const hashtable<traits> &left, const hashtable<traits> &right) {
+        return (!(left == right));
+    }
 }
 
 #endif //_HASH_TABLE_
